@@ -1,0 +1,7 @@
+{
+  "name": "ionic-ble-demo",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "react"
+}
