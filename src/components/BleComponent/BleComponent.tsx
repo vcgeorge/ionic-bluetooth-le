@@ -1,7 +1,7 @@
 import {
   BleClient,
-  dataViewToNumbers,
-  numbersToDataView,
+  // dataViewToNumbers,
+  // numbersToDataView,
   numberToUUID,
   type ScanResult,
 } from "@capacitor-community/bluetooth-le";
@@ -16,9 +16,9 @@ import {
   IonLabel,
   IonList,
 } from "@ionic/react";
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
-// const CALOPAD_SERVICE = "0000fe59-0000-1000-8000-00805f9b34fb";
+const CALOPAD_SERVICE = "0000fe59-0000-1000-8000-00805f9b34fb";
 // const HEART_RATE_SERVICE = "0000180d-0000-1000-8000-00805f9b34fb";
 // const HEART_RATE_MEASUREMENT_CHARACTERISTIC =
 //   "00002a37-0000-1000-8000-00805f9b34fb";
@@ -31,8 +31,13 @@ const BATTERY_CHARACTERISTIC = numberToUUID(0x2a19);
 
 function BleComponent() {
   const devicesList = useRef<ScanResult[] | []>([]);
+  const [devices, setDevicesList] = useState<ScanResult[] | []>([]);
+  const [deviceStatus, setDeviceStatus] = useState<string>("");
+
+  console.log("deviceStatus", deviceStatus);
   const initBle = async () => {
     // devicesList.current = [];
+    // setDevicesList([]);
     try {
       await BleClient.initialize({
         androidNeverForLocation: true,
@@ -42,9 +47,16 @@ function BleComponent() {
 
       console.log("isEnabled", isEnabled);
 
+      const connectedDevices = await BleClient.getDevices([
+        "E3:F4:FC:EF:B0:B6",
+      ]);
+
+      console.log("getConnectedDevices", connectedDevices);
+
       await BleClient.requestLEScan(
         {
           // name: "OnePlus Bullets Wireless Z",
+          name: "Calopad",
           // services: ["00000118-0000-1000-8000-00805f9b34fb"],
           // optionalServices: ["00000118-0000-1000-8000-00805f9b34fb"],
         },
@@ -57,7 +69,7 @@ function BleComponent() {
             );
             if (result && result?.localName && !isDeviceId) {
               devicesList.current = [...devicesList.current, result];
-              console.log(devicesList.current);
+              setDevicesList(devicesList.current);
             }
           }
         }
@@ -144,23 +156,69 @@ function BleComponent() {
     return heartRate;
   }
 
-  const devices = useMemo(() => {
-    console.log("devicesList.current");
-    return devicesList.current;
-  }, [devicesList.current?.length]);
+  // const devices = useMemo(() => {
+  //   console.log("devicesList.current");
+  //   return devicesList.current;
+  // }, [devicesList.current?.length]);
 
   useEffect(() => {
     console.log("devicesList.current");
   }, [devicesList.current?.length]);
 
-  console.log(devices);
-
   const connectToDevice = async (deviceId: string) => {
-    console.log(devicesList.current?.[0]?.device);
+    console.log(deviceId);
     if (!deviceId) return;
-    await BleClient.connect(deviceId, (deviceId) => {
-      onDisconnect(deviceId);
+
+    try {
+      // Connect to the device
+      await BleClient.connect(deviceId, (deviceId) => {
+        onDisconnect(deviceId);
+        // Discover device services and characteristics
+        // BleClient.discoverServices(deviceId)
+        //   .then((deviceInfo: any) => {
+        //     setDeviceStatus(
+        //       `Discovered device info ==>: ${JSON.stringify(deviceInfo)}`
+        //     );
+
+        //     // Read a specific characteristic (replace 'characteristicUuid' with the actual UUID)
+        //     BleClient.read(
+        //       deviceId,
+        //       deviceInfo?.services?.[0]?.characteristics?.[0]?.serviceUuid,
+        //       "00002a00-0000-1000-8000-00805f9b34fb"
+        //     )
+        //       .then((value) => {
+        //         setDeviceStatus(`Characteristic Value: ${value}`);
+        //       })
+        //       .catch((error) => {
+        //         setDeviceStatus(
+        //           `Error reading characteristic: ${error.message}`
+        //         );
+        //       });
+        //   })
+        //   .catch((error) => {
+        //     setDeviceStatus(
+        //       `Error discovering characteristics: ${error.message}`
+        //     );
+        //   });
+      });
+    } catch (error) {
+      console.error("Error connecting to the device:", error);
+      setDeviceStatus("Error connecting to the device.");
+    }
+
+    await BleClient.discoverServices(deviceId).then((data) => {
+      console.log("discoverServices ==> ", data);
+      console.log(`Discovered device info ==>: ${JSON.stringify(data)}`);
     });
+
+    await BleClient.startNotifications(
+      deviceId,
+      "00001800-0000-1000-8000-00805f9b34fb",
+      "00002a00-0000-1000-8000-00805f9b34fb",
+      (value) => {
+        console.log("current heart rate", parseHeartRate(value));
+      }
+    );
   };
 
   const disConnectToDevice = async (deviceId: string) => {
@@ -186,18 +244,15 @@ function BleComponent() {
 
   const readServices = async (deviceId: string) => {
     if (!deviceId) return;
-    // const result = await BleClient.read(
-    //   deviceId,
-    //   CALOPAD_SERVICE,
-    //   "00002a01-0000-1000-8000-00805f9b34fb"
-    //   // [
-    //   //   "00001800-0000-1000-8000-00805f9b34fb",
-    //   //   "00001801-0000-1000-8000-00805f9b34fb",
-    //   // ]
-    // );
-    // console.log("body sensor location", result.getUint8(0));
+    const result = await BleClient.read(
+      deviceId,
+      "00001800-0000-1000-8000-00805f9b34fb",
+      "00002a00-0000-1000-8000-00805f9b34fb"
+    );
+    console.log("body sensor location", result.getUint8(3));
+    const view = new Int32Array(result.getUint8(8));
 
-    // console.log("Services", result);
+    console.log("Services", result, view);
   };
 
   const onStopSearch = async () => {
@@ -220,6 +275,11 @@ function BleComponent() {
                 <IonLabel>{device?.localName}</IonLabel>
                 <IonGrid>
                   <IonButton
+                    onClick={() => disConnectToDevice(device?.device?.deviceId)}
+                  >
+                    DisConnect
+                  </IonButton>
+                  <IonButton
                     onClick={() => connectToDevice(device?.device?.deviceId)}
                   >
                     Connect
@@ -227,31 +287,27 @@ function BleComponent() {
                   <IonButton
                     onClick={() => readServices(device?.device?.deviceId)}
                   >
-                    Read Services{" "}
+                    Read Services
                   </IonButton>
                   <IonButton
                     onClick={() => getServices(device?.device?.deviceId)}
                   >
-                    Services{" "}
+                    Services
                   </IonButton>
-                  <IonButton
-                    onClick={() => disConnectToDevice(device?.device?.deviceId)}
-                  >
-                    DisConnect
-                  </IonButton>
+
                   <IonButton
                     onClick={() =>
                       getBatteryPercentage(device?.device?.deviceId)
                     }
                   >
-                    Battery{" "}
+                    Battery
                   </IonButton>
                   <IonButton
                     onClick={async () =>
                       await BleClient.createBond(device?.device?.deviceId)
                     }
                   >
-                    Create Bond{" "}
+                    Create Bond
                   </IonButton>
                 </IonGrid>
               </IonItem>
